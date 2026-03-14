@@ -13,6 +13,7 @@
 | `05-ipc-protocol/` | 連線機制、訊息格式、Request/Event Actions、Pattern Cache 同步 |
 | `06-pattern-reference/` | 內建 regex 樣式庫、遮蔽格式規則、自訂樣式指引 |
 | `07-known-issues-and-improvements.md` | 已知問題與待改進項目 |
+| `08-terminal-masking-research.md` | Terminal Masking 技術研究（node-pty vs ANSI fg=bg vs 混合方案） |
 
 ## 來源文件對照
 
@@ -33,5 +34,6 @@
 | 了解已知 bug | [07-known-issues-and-improvements.md](07-known-issues-and-improvements.md) |
 | 了解 Chrome Extension 架構 | [chrome-extension-architecture.md](02-technical-architecture/chrome-extension-architecture.md) |
 | 了解 VS Code Extension 架構 | [vscode-extension-architecture.md](02-technical-architecture/vscode-extension-architecture.md) |
+| 了解 Terminal Masking 方案 | [08-terminal-masking-research.md](08-terminal-masking-research.md) |
 
 > 所有文件以繁體中文撰寫，技術名詞保留英文原文。
