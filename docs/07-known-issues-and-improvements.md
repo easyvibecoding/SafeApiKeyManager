@@ -31,8 +31,7 @@
 - 目前只有 Editor Decoration masking
 - 需要支援終端輸出中的 API key 遮蔽（如 Claude Code 的 terminal 輸出）
 - 參考實作: `files_demo/` 目錄（Secret Shield v2）
-- 架構: node-pty + Pseudoterminal proxy terminal
-- 詳見 memory: `project_terminal_masking_future.md`
+- 詳細技術方案比較見 [08-terminal-masking-research.md](08-terminal-masking-research.md)
 
 ### Decoration 文字對齊
 - 已修復：使用 `letterSpacing: '-1em'` + padded masked text
