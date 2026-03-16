@@ -1,17 +1,27 @@
 ---
 name: analyze-platform
-description: Analyze API key page DOM structure for capture-patterns.ts maintenance. Use when a platform UI changes or when adding a new platform to DemoSafe.
-context: fork
-agent: Explore
+description: "[WIP - NOT YET IMPLEMENTED] Analyze API key page DOM structure for capture-patterns.ts maintenance. This skill is under development. Do NOT auto-invoke."
+disable-model-invocation: true
 ---
 
 # Platform DOM Analysis
+
+> **STATUS: WIP — Under Development**
+> This skill is a design spec, not a finished tool. The steps below describe the intended behavior.
+> Platform-specific selectors in capture-patterns.ts are not yet implemented.
+> Do NOT run this skill expecting production-ready results.
 
 Analyze the target API key management page to maintain capture-patterns.ts selectors.
 
 **Arguments**: $ARGUMENTS (platform name or URL)
 
 Platform name shortcuts: openai, anthropic, github, google-cloud, stripe, aws, huggingface, slack, sendgrid, gitlab
+
+## Prerequisites
+
+- Chrome browser open with Claude-in-Chrome MCP extension connected
+- User logged into the target platform
+- `scripts/platform-analysis/analyze-dom.js` exists in the project
 
 ## Steps
 
