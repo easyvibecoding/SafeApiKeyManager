@@ -94,13 +94,34 @@ Content Script 開始主動掃描
 | Stripe (test) | `dashboard.stripe.com/test/apikeys` | `sk_test_` | Reveal/Hide toggle | 同上 |
 | Vercel | `vercel.com/*/settings/environment-variables` | 各種 | Eye icon toggle（Sensitive 永不可見） | 依內容比對 |
 
+#### 各平台 DOM 元素結構（2026-03 實測）
+
+| 平台 | Key 所在元素 | Copy 機制 | 穩定選擇器 | 框架 |
+|------|------------|----------|-----------|------|
+| OpenAI | `div.api-key-token-value` | Modal (Radix UI) | ✅ `api-key-token-value` | Radix + Emotion |
+| Anthropic | `<code>` in table cell | Dialog 內 Copy 按鈕 | ⚠️ Tailwind `text-text-300` | React + Tailwind |
+| GitHub | `<clipboard-copy value="token">` | Web Component `value` attr | ✅ `clipboard-copy[value]` | Server-rendered + Web Components |
+| Google Cloud | `<services-show-api-key-string>` | Material 按鈕 (Show key) | ✅ 自訂元素名 | Angular + Material |
+| Hugging Face | `<td>` 裸文字節點 | 不明 | ❌ 無 wrapper | Server-rendered + Tailwind |
+| Stripe | 可能 `<input readonly>` | 相鄰按鈕 | ⚠️ CSS modules hash | React + CSS modules |
+| AWS | Cloudscape `Input` + `CopyToClipboard` | Cloudscape 元件 | ⚠️ `awsui_*_hash` | React + Cloudscape |
+| Slack | 不明 | 不明 | 不明 | 不明 |
+| SendGrid | 不明（一次性顯示） | 不明 | 不明 | 不明 |
+
+**重要發現**：
+- **沒有平台使用 Shadow DOM** — content script 皆可存取
+- **沒有平台的 CSP 阻擋 content script 注入**
+- **動態 class name**：OpenAI（Emotion `css-*`）、GCP（Angular `_nghost-*`）、Stripe（CSS modules）的 hash class 每次 build 都會變
+
 #### 截取策略對應
 
-| 策略 | 適用場景 | 實作方式 |
-|------|---------|---------|
-| MutationObserver | Category A 的 modal/dialog | 監聽 DOM 新增節點，偵測 key pattern |
-| DOM 掃描 | Category B 的 toggle reveal | Reveal 後掃描新出現的文字 |
-| 剪貼簿監聽 | 使用者點 Copy 按鈕 | `navigator.clipboard` / `document.execCommand` 攔截 |
+| 策略 | 適用場景 | 實作方式 | 優先順序 |
+|------|---------|---------|---------|
+| TreeWalker + Regex | 所有平台通用 | 掃描文字節點比對 prefix pattern | **主要策略** |
+| MutationObserver | Category A 的 modal/dialog | 監聽 DOM 新增節點，觸發 TreeWalker | **必備** |
+| 平台特定選擇器 | OpenAI、GitHub、GCP | 用穩定的語義 class/元素名加速偵測 | 輔助加速 |
+| 剪貼簿監聽 | 使用者點 Copy 按鈕 | `navigator.clipboard` 攔截 | 補充偵測 |
+| `clipboard-copy[value]` | GitHub 專用 | 讀取 Web Component 的 `value` attribute | 平台特定 |
 
 ---
 
