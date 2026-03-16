@@ -71,16 +71,36 @@ Content Script 開始主動掃描
 4. **剪貼簿監聽**：使用者在頁面上按複製時，攔截剪貼簿內容比對 pattern
 5. **Modal / Dialog**：許多平台在 modal 中一次性顯示 Key（如 OpenAI 的 "Copy" 按鈕旁）
 
-### 各平台 Key 產生頁面特徵
+### 各平台 Key 產生頁面特徵（實地調查 2026-03）
 
-| 平台 | Key 出現位置 | 特殊行為 |
-|------|-------------|---------|
-| OpenAI | Modal dialog，含 Copy 按鈕 | Key 只顯示一次，關閉後不可再查看 |
-| Anthropic | 頁面內 `<code>` 元素 | 同上，一次性顯示 |
-| AWS IAM | CSV 下載或頁面顯示 | Access Key + Secret Key 同時出現 |
-| Stripe | Dashboard 頁面內嵌顯示 | Restricted Key 可反覆查看 |
-| GitHub | Token 產生後頁面顯示 | 只顯示一次 |
-| Google Cloud | JSON 檔案下載 | 非頁面顯示，需攔截下載 |
+#### Category A：一次性顯示（關閉後不可再查看）— 截取最關鍵
+
+| 平台 | URL | 前綴 | 顯示方式 | Regex |
+|------|-----|------|---------|-------|
+| OpenAI | `platform.openai.com/api-keys` | `sk-proj-` | Modal dialog + Copy 按鈕 | `sk-proj-[A-Za-z0-9_-]{80,}` |
+| Anthropic | `console.anthropic.com/settings/keys` | `sk-ant-api03-` | Pop-up dialog + Copy Key 按鈕 | `sk-ant-api03-[A-Za-z0-9_-]{80,}` |
+| AWS IAM | `console.aws.amazon.com/iam/` | `AKIA` / 40字元 secret | 多步驟 wizard 最後一頁 + Download CSV | `AKIA[0-9A-Z]{16}` |
+| GitHub | `github.com/settings/tokens` | `ghp_` / `github_pat_` | Inline 頁面 + 警告文字 | `ghp_[A-Za-z0-9]{36}` |
+| SendGrid | `app.sendgrid.com/settings/api_keys` | `SG.` | 建立確認頁 | `SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}` |
+| Stripe (live) | `dashboard.stripe.com/apikeys` | `sk_live_` | 建立時一次顯示 | `sk_(test\|live)_[a-zA-Z0-9]{24,}` |
+
+#### Category B：可重複查看 / Toggle 顯示
+
+| 平台 | URL | 前綴 | 顯示方式 | Regex |
+|------|-----|------|---------|-------|
+| Google Cloud | `console.cloud.google.com/apis/credentials` | `AIzaSy` | 永遠可見 + 點擊查看 | `AIzaSy[A-Za-z0-9_-]{33}` |
+| Hugging Face | `huggingface.co/settings/tokens` | `hf_` | Show/Hide toggle | `hf_[a-zA-Z0-9]{30,}` |
+| Slack | `api.slack.com/apps/*/oauth` | `xoxb-` / `xoxp-` | 永遠可見在 OAuth 頁面 | `xox[bpae]-[0-9]+-[A-Za-z0-9-]+` |
+| Stripe (test) | `dashboard.stripe.com/test/apikeys` | `sk_test_` | Reveal/Hide toggle | 同上 |
+| Vercel | `vercel.com/*/settings/environment-variables` | 各種 | Eye icon toggle（Sensitive 永不可見） | 依內容比對 |
+
+#### 截取策略對應
+
+| 策略 | 適用場景 | 實作方式 |
+|------|---------|---------|
+| MutationObserver | Category A 的 modal/dialog | 監聽 DOM 新增節點，偵測 key pattern |
+| DOM 掃描 | Category B 的 toggle reveal | Reveal 後掃描新出現的文字 |
+| 剪貼簿監聽 | 使用者點 Copy 按鈕 | `navigator.clipboard` / `document.execCommand` 攔截 |
 
 ---
 
