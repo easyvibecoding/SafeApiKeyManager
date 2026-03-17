@@ -55,7 +55,7 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         regex: /sk-proj-[A-Za-z0-9_-]{20,}/g,
         confidence: 0.95,
         minLength: 28,
-        preHideCSS: `[data-state="open"] input[type="text"], [data-state="open"] code, td.api-key-token .api-key-token-value { visibility: hidden !important; }`,
+        preHideCSS: `[data-state="open"] code, td.api-key-token .api-key-token-value { visibility: hidden !important; }`,
         platformSelectors: [{
             hostname: 'platform.openai.com',
             selectors: [
@@ -354,12 +354,12 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         regex: /glpat-[A-Za-z0-9_-]{20,}/g,
         confidence: 0.90,
         minLength: 26,
-        preHideCSS: `input#created-personal-access-token, .flash-notice code { visibility: hidden !important; }`,
+        preHideCSS: `.gl-alert-success .gl-alert-body input { visibility: hidden !important; }`,
         platformSelectors: [{
             hostname: 'gitlab.com',
-            selectors: ['input#created-personal-access-token', '.flash-notice code', 'clipboard-copy[value]'],
+            selectors: ['.gl-alert-success .gl-alert-body input', 'input.input-copy-show-disc'],
             attributes: ['value'],
-            watchSelector: '.flash-notice',
+            watchSelector: '.gl-alert-success',
             strategy: 'flash_notice',
         }],
     },

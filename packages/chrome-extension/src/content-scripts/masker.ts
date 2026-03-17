@@ -234,10 +234,13 @@ function scanAndMask() {
         maskTextNode(node, entry);
     }
 
-    // Restore pre-hidden elements after masking is done
+    // Restore pre-hidden elements after masking is done.
+    // Skip elements inside dialogs — manifest CSS keeps those hidden safely.
     if (nodesToMask.length > 0) {
         document.querySelectorAll('[data-demosafe-prehidden]').forEach(el => {
-            (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+            if (!el.closest('[data-state="open"], [role="dialog"], dialog, .gl-alert-success')) {
+                (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+            }
             el.removeAttribute('data-demosafe-prehidden');
         });
     }
@@ -551,7 +554,7 @@ function startPlatformWatcher() {
     if (watchSelectors.length === 0) return;
 
     platformWatcher = new MutationObserver((mutations) => {
-        if (!isCaptureMode) return;
+        if (!shouldAutoCapture()) return;
 
         for (const mutation of mutations) {
             if (mutation.type !== 'childList') continue;
@@ -802,15 +805,20 @@ function immediatelyMaskValue(rawValue: string, serviceName: string, maskedPrevi
 
         if (lastIndex > 0) {
             node.parentNode?.replaceChild(fragment, node);
-            // Restore visibility on elements hidden by pre-hide CSS or instant observer
+            // Restore visibility on elements hidden by pre-hide CSS or instant observer.
+            // Skip elements inside dialogs — manifest CSS should keep those hidden
+            // since SPA frameworks can overwrite our DOM changes.
             let ancestor = node.parentNode as HTMLElement | null;
-            for (let i = 0; i < 6 && ancestor; i++) {
-                if (ancestor.hasAttribute('data-demosafe-prehidden') ||
-                    window.getComputedStyle(ancestor).visibility === 'hidden') {
-                    ancestor.style.setProperty('visibility', 'visible', 'important');
-                    ancestor.removeAttribute('data-demosafe-prehidden');
+            const isInDialog = ancestor?.closest('[data-state="open"], [role="dialog"], dialog, .gl-alert-success');
+            if (!isInDialog) {
+                for (let i = 0; i < 6 && ancestor; i++) {
+                    if (ancestor.hasAttribute('data-demosafe-prehidden') ||
+                        window.getComputedStyle(ancestor).visibility === 'hidden') {
+                        ancestor.style.setProperty('visibility', 'visible', 'important');
+                        ancestor.removeAttribute('data-demosafe-prehidden');
+                    }
+                    ancestor = ancestor.parentElement;
                 }
-                ancestor = ancestor.parentElement;
             }
         }
     }
@@ -818,16 +826,28 @@ function immediatelyMaskValue(rawValue: string, serviceName: string, maskedPrevi
     // Also mask in input/textarea values (replace with masked preview)
     document.querySelectorAll<HTMLInputElement>('input, textarea').forEach(el => {
         if (el.value?.includes(rawValue)) {
-            el.value = el.value.replace(rawValue, maskedPreview);
             el.setAttribute('data-demosafe-original', rawValue);
+            // Check if input is inside a pre-hide CSS scope (dialog/modal).
+            // SPA frameworks (React) control input.value — direct replacement gets overwritten.
+            // Keep these inputs hidden by manifest CSS instead of making them visible.
+            const inDialog = el.closest('[data-state="open"], [role="dialog"], dialog, .gl-alert-success');
+            if (inDialog) {
+                // Don't set visibility:visible — manifest CSS keeps it hidden safely.
+                // Value replacement would be overwritten by React anyway.
+                return;
+            }
+            el.value = el.value.replace(rawValue, maskedPreview);
             el.style.setProperty('visibility', 'visible', 'important');
             el.style.setProperty('color', 'inherit', 'important');
         }
     });
 
-    // Restore all pre-hidden elements now that key is masked
+    // Restore pre-hidden elements now that key is masked.
+    // Skip elements inside dialogs — manifest CSS keeps those hidden safely.
     document.querySelectorAll('[data-demosafe-prehidden]').forEach(el => {
-        (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+        if (!el.closest('[data-state="open"], [role="dialog"], dialog, .gl-alert-success')) {
+            (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+        }
         el.removeAttribute('data-demosafe-prehidden');
     });
 }

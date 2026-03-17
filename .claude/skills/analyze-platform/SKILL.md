@@ -47,7 +47,60 @@ If the argument is a full URL, use it directly.
 - Execute the `analyze-dom.js` script on the page via `mcp__claude-in-chrome__javascript_tool`
 - Parse the JSON output
 
-### 3. Compare and Report
+### 3. SPA Framework Detection
+
+Many platforms use React, Vue, or Angular. SPA frameworks cause specific issues:
+
+- **React controls `input.value`** — direct `.value` replacement gets overwritten on re-render. The masker must keep dialog inputs hidden via manifest CSS rather than replacing their value.
+- **SPA navigation** — pages like OpenAI/GitLab don't do full reloads when navigating between list and create views. Manifest CSS persists but MutationObserver must detect new dialogs.
+- **Dynamic class names** — obfuscated classes (e.g., `EzGXF`, `htOZM`) change on every build. Never use these in selectors. Target stable attributes: `role`, `data-state`, `data-testid`, `type`, `aria-label`, semantic tags.
+
+Detect the framework by checking:
+```javascript
+({
+  react: !!document.querySelector('[data-reactroot], [data-react-helmet]') || !!Object.keys(document.querySelector('#__next') || {})[0],
+  vue: !!document.querySelector('[data-v-], #__nuxt') || !!window.__VUE__,
+  angular: !!document.querySelector('[ng-version], [_nghost]'),
+  svelte: !!document.querySelector('[class*="svelte-"]'),
+  webComponents: document.querySelectorAll('*').length !== document.querySelectorAll(':not(:defined)').length,
+})
+```
+
+### 4. Analyze List Page vs Dialog
+
+Platforms typically have two views:
+
+**List page** — shows existing keys (usually truncated/masked by the platform)
+- Check if list shows full keys or truncated (`sk-...xxxx`)
+- Check `td`, `tr`, table structures for key display elements
+- These selectors go in `platformSelectors[].selectors` for passive masking
+
+**Create/reveal dialog** — shows the full key once (then never again)
+- Check the dialog container: `[role="dialog"]`, `[data-state="open"]`, `.modal`, `.gl-alert`
+- Check what element holds the key: `input[type="text"]`, `code`, `<p class="font-mono">`, `<clipboard-copy>`
+- Check if key is in `input.value` (not a text node) — if so, note that React may overwrite replacements
+- Check the Copy button: `button[aria-label="Copy"]`, `clipboard-copy[value]`, `navigator.clipboard.writeText`
+
+### 5. Check preHideCSS Scope
+
+The preHideCSS is injected via manifest CSS (before any JS) to prevent flash of plaintext. It must be:
+
+- **Specific enough** — only hide elements that could contain keys. NEVER use `[data-state="open"] input[type="text"]` as it hides ALL text inputs including Name/label fields.
+- **Platform-scoped** — each platform gets its own CSS file, no cross-platform collisions.
+- **Key-display only** — target the key display container, not the entire dialog.
+
+Common safe patterns:
+- `[data-state="open"] code` — code blocks in dialogs (OpenAI)
+- `.gl-alert-success .gl-alert-body input` — success alert with token (GitLab)
+- `input#created-personal-access-token` — specific ID selectors (if stable)
+- `.token-value, .api-key-value` — semantic class selectors
+
+Dangerous patterns to avoid:
+- `input[type="text"]` inside dialog — too broad, hides name/label inputs
+- `mat-dialog-container input` — too broad for Google platforms
+- `.modal input` — catches all modal inputs
+
+### 6. Compare and Report
 
 Compare the analysis results against the current `capture-patterns.ts` entry:
 
@@ -56,9 +109,9 @@ Compare the analysis results against the current `capture-patterns.ts` entry:
 - Has the element structure changed (different tag, different class names)?
 - Are there new stable selectors that could be added?
 - Has the key format (regex pattern) changed?
-- Does the `preHideCSS` still target the right elements?
-- What framework does the page use? Has it changed?
-- Are there any new custom elements or Web Components?
+- Does the `preHideCSS` still target the right elements without being too broad?
+- Is the key in `input.value` (SPA concern) or in a text node?
+- Does the platform use native clipboard copy or `navigator.clipboard.writeText`?
 
 **Format the report as:**
 
@@ -75,11 +128,21 @@ URL: [actual URL visited]
 - Current regex: [from capture-patterns.ts]
 - Keys found on page: [count, prefix only]
 
+### Framework & SPA Behavior
+- Framework: [React/Vue/Angular/vanilla]
+- Key in input.value: YES / NO (if YES, masker cannot replace — must keep hidden)
+- Dialog type: [data-state="open"] / [role="dialog"] / .modal / .gl-alert / other
+- Copy mechanism: [button click / clipboard-copy element / navigator.clipboard.writeText]
+
+### preHideCSS Assessment
+- Current CSS: [from capture-patterns.ts]
+- Too broad: YES / NO (does it hide non-key elements like Name inputs?)
+- Suggested CSS: [recommended CSS if changes needed]
+
 ### DOM Structure
-- Framework: [detected]
-- Key element: [tag.class structure]
-- Dialog/Modal: [structure if found]
-- Copy mechanism: [how copy works]
+- List page key element: [tag.class structure]
+- Dialog key element: [tag.class structure]
+- Stable selectors available: [list of reliable selectors]
 
 ### Recommendations
 - [what to update in capture-patterns.ts]
@@ -90,7 +153,7 @@ URL: [actual URL visited]
 - Read-only: YES / NO
 ```
 
-### 4. Save Report
+### 7. Save Report
 
 Save the report to `scripts/platform-analysis/reports/[platform]-[YYYY-MM-DD].json`
 
@@ -116,19 +179,22 @@ If the user asks to add support for a new platform (one not in the table above):
    - `id`, `serviceName`, `prefix`
    - `regex` based on key format found
    - `confidence` and `minLength`
-   - `preHideCSS` targeting the key display elements
+   - `preHideCSS` targeting key display elements only (not form inputs)
    - `platformSelectors` with hostname, selectors, and strategy
+   - Note if the platform uses SPA framework (affects masking strategy)
 4. Also draft the `manifest.json` URL match entry
-5. Present both changes to the user for review before making any edits
+5. Draft the per-platform pre-hide CSS entry in manifest.json
+6. Present both changes to the user for review before making any edits
 
-## Example
+## Known Platform Quirks
 
-When the user runs `/analyze-platform github`:
+These were discovered through real-world testing (2026-03):
 
-1. Read `analyze-dom.js` and the GitHub entries in `capture-patterns.ts`
-2. Navigate to `https://github.com/settings/tokens`
-3. Execute the analysis script
-4. Check if `code#new-oauth-token`, `code.token`, `clipboard-copy[value]`, `.flash code` still exist on the page
-5. Report findings and any selector changes needed
-6. Save report to `scripts/platform-analysis/reports/github-2026-03-17.json`
-7. List all browser operations performed
+| Platform | Framework | Key Location | Quirk |
+|----------|-----------|-------------|-------|
+| OpenAI | React (Radix UI) | `input[type="text"]` in `[data-state="open"]` dialog | React overwrites `input.value`; must keep input hidden via CSS, not replace value |
+| GitLab | Vue.js | `input.input-copy-show-disc` in `.gl-alert-success` | Redesigned from `#created-personal-access-token` / `.flash-notice` (2026) |
+| AI Studio | Angular Material | `input` in `mat-dialog-container` | Uses `navigator.clipboard.writeText` (not `execCommand`); needs MAIN world clipboard patch |
+| GitHub | Vanilla + Turbo | `clipboard-copy[value]` | Key in `value` attribute, not text node |
+| HuggingFace | Custom | `input[readonly]` in modal | Input may lack `type` attribute; use `input[readonly]`, `input:not([type])` |
+| AWS | React | Region subdomains (`us-east-1.console.aws.amazon.com`) | Need `*.console.aws.amazon.com` in manifest + subdomain matching in code |
