@@ -397,6 +397,20 @@ export function getPreHideCSS(hostname: string): string | null {
     return rules.length > 0 ? rules.join('\n') : null;
 }
 
+/**
+ * Resolve domain patterns with subdomain support.
+ * e.g., "us-east-1.console.aws.amazon.com" matches "console.aws.amazon.com"
+ */
+function resolveDomainPatterns(hostname: string): string[] {
+    // Exact match first
+    if (DOMAIN_SERVICE_MAP[hostname]) return DOMAIN_SERVICE_MAP[hostname];
+    // Try matching as subdomain (e.g., region.console.aws.amazon.com)
+    for (const [domain, patterns] of Object.entries(DOMAIN_SERVICE_MAP)) {
+        if (hostname.endsWith('.' + domain)) return patterns;
+    }
+    return [];
+}
+
 // MARK: - Matching Functions
 
 /**
@@ -407,7 +421,7 @@ export function matchAgainstCapturePatterns(
     sourceHostname: string
 ): CaptureMatch[] {
     const matches: CaptureMatch[] = [];
-    const domainPatterns = DOMAIN_SERVICE_MAP[sourceHostname] ?? [];
+    const domainPatterns = resolveDomainPatterns(sourceHostname);
 
     // Skip truncated keys (contain ... or are too short)
     if (text.includes('...') && text.length < 30) return matches;

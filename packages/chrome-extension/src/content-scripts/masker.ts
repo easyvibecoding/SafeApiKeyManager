@@ -323,7 +323,13 @@ function removePreHide() {
 
 /** Check if current page is a supported platform for auto-capture */
 function isOnSupportedPlatform(): boolean {
-    return window.location.hostname in DOMAIN_SERVICE_MAP;
+    const hostname = window.location.hostname;
+    if (hostname in DOMAIN_SERVICE_MAP) return true;
+    // Subdomain match (e.g., us-east-1.console.aws.amazon.com)
+    for (const domain of Object.keys(DOMAIN_SERVICE_MAP)) {
+        if (hostname.endsWith('.' + domain)) return true;
+    }
+    return false;
 }
 
 /** Auto-capture should run when Demo Mode is ON and on a supported platform */
