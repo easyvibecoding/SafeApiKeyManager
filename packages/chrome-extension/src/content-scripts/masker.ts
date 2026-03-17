@@ -215,8 +215,30 @@ function scanAndMask() {
         }
     }
 
+    // If auto-capture is active, submit matched values BEFORE masking replaces them
+    if (shouldAutoCapture()) {
+        for (const { match, entry } of nodesToMask) {
+            const rawValue = match[0].trim();
+            if (rawValue.length >= 20 && !rawValue.includes('****') && !submittedKeys.has(rawValue)) {
+                const hostname = window.location.hostname;
+                const captureMatches = matchAgainstCapturePatterns(rawValue, hostname);
+                for (const cm of captureMatches) {
+                    submitCapturedKey(cm);
+                }
+            }
+        }
+    }
+
     for (const { node, entry } of nodesToMask) {
         maskTextNode(node, entry);
+    }
+
+    // Restore pre-hidden elements after masking is done
+    if (nodesToMask.length > 0) {
+        document.querySelectorAll('[data-demosafe-prehidden]').forEach(el => {
+            (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+            el.removeAttribute('data-demosafe-prehidden');
+        });
     }
 }
 
@@ -278,12 +300,23 @@ function unmaskAll() {
 
 // MARK: - Pre-hide Removal
 
-/** Remove the pre-hide CSS injected by pre-hide.ts after masking is done */
+/** Remove the pre-hide CSS and stop instant observer from pre-hide.ts */
 function removePreHide() {
     const el = document.getElementById('demosafe-pre-hide');
-    if (el) {
-        el.remove();
+    if (el) el.remove();
+
+    // Stop the instant observer from pre-hide.ts
+    const obs = (window as unknown as Record<string, unknown>).__demosafe_instant_observer as MutationObserver | undefined;
+    if (obs) {
+        obs.disconnect();
+        delete (window as unknown as Record<string, unknown>).__demosafe_instant_observer;
     }
+
+    // Restore visibility on elements hidden by instant observer
+    document.querySelectorAll('[data-demosafe-prehidden]').forEach(el => {
+        (el as HTMLElement).style.removeProperty('visibility');
+        el.removeAttribute('data-demosafe-prehidden');
+    });
 }
 
 // MARK: - Auto Capture in Demo Mode
@@ -717,6 +750,16 @@ function immediatelyMaskValue(rawValue: string, serviceName: string, maskedPrevi
 
         if (lastIndex > 0) {
             node.parentNode?.replaceChild(fragment, node);
+            // Restore visibility on elements hidden by pre-hide CSS or instant observer
+            let ancestor = node.parentNode as HTMLElement | null;
+            for (let i = 0; i < 6 && ancestor; i++) {
+                if (ancestor.hasAttribute('data-demosafe-prehidden') ||
+                    window.getComputedStyle(ancestor).visibility === 'hidden') {
+                    ancestor.style.setProperty('visibility', 'visible', 'important');
+                    ancestor.removeAttribute('data-demosafe-prehidden');
+                }
+                ancestor = ancestor.parentElement;
+            }
         }
     }
 
@@ -725,10 +768,15 @@ function immediatelyMaskValue(rawValue: string, serviceName: string, maskedPrevi
         if (el.value?.includes(rawValue)) {
             el.value = el.value.replace(rawValue, maskedPreview);
             el.setAttribute('data-demosafe-original', rawValue);
-            // Override pre-hide: make masked value visible
-            el.style.color = '';
+            el.style.setProperty('visibility', 'visible', 'important');
             el.style.setProperty('color', 'inherit', 'important');
         }
+    });
+
+    // Restore all pre-hidden elements now that key is masked
+    document.querySelectorAll('[data-demosafe-prehidden]').forEach(el => {
+        (el as HTMLElement).style.setProperty('visibility', 'visible', 'important');
+        el.removeAttribute('data-demosafe-prehidden');
     });
 }
 

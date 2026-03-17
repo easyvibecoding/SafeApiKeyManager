@@ -91,13 +91,13 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         platformSelectors: [
             {
                 hostname: 'console.anthropic.com',
-                selectors: ['[role="dialog"] code', '[role="dialog"] input', 'code.text-text-300'],
+                selectors: ['[role="dialog"] .font-mono', '[role="dialog"] code', '[role="dialog"] input', 'code.text-text-300'],
                 watchSelector: '[role="dialog"]',
                 strategy: 'modal_watch',
             },
             {
                 hostname: 'platform.claude.com',
-                selectors: ['[role="dialog"] code', '[role="dialog"] input', 'code.text-text-300'],
+                selectors: ['[role="dialog"] .font-mono', '[role="dialog"] code', '[role="dialog"] input', 'code.text-text-300'],
                 watchSelector: '[role="dialog"]',
                 strategy: 'modal_watch',
             },

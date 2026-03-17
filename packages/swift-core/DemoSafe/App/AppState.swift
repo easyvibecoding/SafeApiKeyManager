@@ -219,8 +219,8 @@ final class AppState: ObservableObject {
     /// so Keychain ACL automatically matches the current binary.
     private func seedTestKeysIfNeeded() {
         let testKeys: [(label: String, serviceName: String, pattern: String, value: String)] = [
-            ("test-key-1", "OpenAI", "sk-[a-zA-Z0-9]+", "sk-proj-TestKey1234567890abcdef"),
-            ("openai-dev", "OpenAI", "sk-[a-zA-Z0-9]+", "sk-devTestKey9876543210"),
+            ("test-key-1", "OpenAI", "sk-proj-[a-zA-Z0-9_-]+", "sk-proj-TestKey1234567890abcdef"),
+            ("openai-dev", "OpenAI", "sk-proj-[a-zA-Z0-9_-]+", "sk-devTestKey9876543210"),
             ("anthropic-prod", "Anthropic", "sk-ant-[a-zA-Z0-9_-]+", "sk-ant-test1234567890abcdef"),
             ("aws-access-key", "AWS", "AKIA[0-9A-Z]{16}", "AKIAIOSFODNN7EXAMPLE1"),
             ("stripe-live", "Stripe", "sk_live_[a-zA-Z0-9]+", "sk_live_test1234567890abcdef"),
