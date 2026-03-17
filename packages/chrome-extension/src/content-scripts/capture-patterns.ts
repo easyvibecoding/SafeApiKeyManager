@@ -115,17 +115,17 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         regex: /AKIA[0-9A-Z]{16}/g,
         confidence: 0.90,
         minLength: 20,
-        preHideCSS: `[class*="awsui_input"] input[readonly] { visibility: hidden !important; }`,
+        preHideCSS: `.create-root-access-key-container [class*="awsui_box"] { visibility: hidden !important; }`,
         platformSelectors: [{
             hostname: 'console.aws.amazon.com',
             selectors: [
-                '[class*="awsui_input"] input',
+                '.create-root-access-key-container [class*="awsui_box"]',
                 '[class*="awsui_copy"]',
                 'input[readonly]',
             ],
             attributes: ['value'],
-            watchSelector: '[class*="awsui_modal"]',
-            strategy: 'modal_watch',
+            watchSelector: '.create-root-access-key-container',
+            strategy: 'always_visible',
         }],
     },
     // AWS Temporary Access Key
@@ -137,6 +137,9 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         confidence: 0.85,
         minLength: 20,
     },
+    // AWS Secret Access Key — no regex pattern (too broad for DOM scan).
+    // Captured exclusively via clipboard interception on AWS pages.
+    // See masker.ts handleClipboardForAwsSecret() for the detection logic.
     // Google Cloud API Key (covers Cloud Console + AI Studio)
     {
         id: 'google-cloud',

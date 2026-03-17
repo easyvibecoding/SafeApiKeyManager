@@ -668,14 +668,43 @@ function handleCopyEvent() {
     setTimeout(() => {
         navigator.clipboard.readText().then((text) => {
             if (!text || text.length < 10) return;
-            const hostname = window.location.hostname;
-            const matches = matchAgainstCapturePatterns(text, hostname);
-            for (const match of matches) {
-                match.captureMethod = 'clipboard_intercept';
-                submitCapturedKey(match);
-            }
+            handleClipboardText(text);
         }).catch(() => {});
     }, 100);
+}
+
+/**
+ * Process clipboard text for key capture.
+ * Handles both pattern-matched keys and special cases like AWS Secret Access Key.
+ */
+function handleClipboardText(text: string) {
+    const hostname = window.location.hostname;
+    const matches = matchAgainstCapturePatterns(text, hostname);
+    for (const match of matches) {
+        match.captureMethod = 'clipboard_intercept';
+        submitCapturedKey(match);
+    }
+
+    // AWS Secret Access Key: 40-char base64 string without AKIA/ASIA prefix.
+    // Only on AWS console pages, only via clipboard (no DOM scan).
+    if (matches.length === 0 && isAwsConsolePage(hostname)) {
+        const awsSecretPattern = /^[A-Za-z0-9/+=]{40}$/;
+        if (awsSecretPattern.test(text.trim()) &&
+            !text.startsWith('AKIA') && !text.startsWith('ASIA')) {
+            submitCapturedKey({
+                rawValue: trimmed,
+                serviceName: 'AWS',
+                patternId: 'aws-secret-key',
+                confidence: 0.85,
+                captureMethod: 'clipboard_intercept',
+            });
+        }
+    }
+}
+
+function isAwsConsolePage(hostname: string): boolean {
+    return hostname === 'console.aws.amazon.com' ||
+        hostname.endsWith('.console.aws.amazon.com');
 }
 
 // Listen for clipboard writeText events from clipboard-patch.ts (MAIN world)
@@ -689,12 +718,7 @@ function patchClipboardWriteText() {
         setTimeout(() => {
             navigator.clipboard.readText().then((text) => {
                 if (!text || text.length < 10 || !shouldAutoCapture()) return;
-                const hostname = window.location.hostname;
-                const matches = matchAgainstCapturePatterns(text, hostname);
-                for (const match of matches) {
-                    match.captureMethod = 'clipboard_intercept';
-                    submitCapturedKey(match);
-                }
+                handleClipboardText(text);
             }).catch(() => {});
         }, 150);
     });
@@ -923,10 +947,9 @@ function showToast(serviceName: string, preview: string) {
         `<span style="color:#f59e0b;font-weight:600">${serviceName}</span> ` +
         `key captured: <code>${preview}</code>`;
 
-    // Find the topmost visible container to inject toast into.
-    // If a modal/dialog is open, inject inside it so toast is above the backdrop.
-    const topContainer = findTopmostContainer();
-    topContainer.appendChild(toast);
+    // Always inject into document.body for maximum visibility.
+    // Fixed positioning + max z-index ensures it's above all overlays.
+    document.body.appendChild(toast);
 
     requestAnimationFrame(() => {
         toast.style.opacity = '1';

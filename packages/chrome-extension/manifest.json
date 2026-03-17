@@ -117,7 +117,9 @@
       "matches": [
         "https://aistudio.google.com/*",
         "https://console.cloud.google.com/*",
-        "https://dashboard.stripe.com/*"
+        "https://dashboard.stripe.com/*",
+        "https://console.aws.amazon.com/*",
+        "https://*.console.aws.amazon.com/*"
       ],
       "js": ["dist/content-scripts/clipboard-patch.js"],
       "run_at": "document_start",
