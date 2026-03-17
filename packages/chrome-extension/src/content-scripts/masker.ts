@@ -121,17 +121,17 @@ chrome.runtime.onMessage.addListener((message) => {
             // Persist for pre-hide.ts on next page load
             chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
             if (isDemoMode) {
+                enablePreHide(); // Re-enable manifest CSS protection
                 scanAndMask();
                 if (isOnSupportedPlatform()) {
                     startPlatformWatcher();
                     startClipboardInterceptor();
                     startInputPolling();
                     scanForNewKeys();
-                    // Keep pre-hide CSS active — protects modals that appear later
                 }
             } else {
                 unmaskAll();
-                removePreHide();
+                removePreHide(); // Override manifest CSS to show keys normally
                 if (!isCaptureMode) {
                     stopPlatformWatcher();
                     stopClipboardInterceptor();
@@ -300,7 +300,7 @@ function unmaskAll() {
 
 // MARK: - Pre-hide Removal
 
-/** Remove the pre-hide CSS and stop instant observer from pre-hide.ts */
+/** Remove pre-hide CSS, stop instant observer, and override manifest CSS */
 function removePreHide() {
     const el = document.getElementById('demosafe-pre-hide');
     if (el) el.remove();
@@ -317,6 +317,38 @@ function removePreHide() {
         (el as HTMLElement).style.removeProperty('visibility');
         el.removeAttribute('data-demosafe-prehidden');
     });
+
+    // Override manifest-injected CSS (can't be removed, but can be overridden)
+    // When Demo Mode is OFF, all pre-hidden elements should be visible
+    if (!document.getElementById('demosafe-prehide-override')) {
+        const override = document.createElement('style');
+        override.id = 'demosafe-prehide-override';
+        override.textContent = `
+            /* Override manifest CSS pre-hide when Demo Mode is OFF */
+            code#new-oauth-token, code.token, .flash code, clipboard-copy[value],
+            [data-state="open"] input[type="text"], [data-state="open"] code,
+            td.api-key-token .api-key-token-value,
+            [role="dialog"] .bg-accent-900, [role="dialog"] .bg-accent-900 *,
+            [role="dialog"] .font-mono,
+            [class*="awsui_input"] input[readonly],
+            services-show-api-key-string, ms-api-key-key-string, .api-key,
+            mat-dialog-container input, mat-dialog-container code,
+            input[type="text"][readonly],
+            .token-value code, input[readonly], input.font-mono, input.truncate,
+            input[type="text"].token_display, .token_display code,
+            [class*="api-key"] input, [class*="api-key"] code,
+            input#created-personal-access-token, .flash-notice code {
+                visibility: visible !important;
+            }
+        `;
+        document.head.appendChild(override);
+    }
+}
+
+/** Remove the manifest CSS override (re-enable pre-hide when Demo Mode turns ON) */
+function enablePreHide() {
+    const override = document.getElementById('demosafe-prehide-override');
+    if (override) override.remove();
 }
 
 // MARK: - Auto Capture in Demo Mode
@@ -941,13 +973,13 @@ chrome.runtime.sendMessage({ type: 'get_state' }, (response) => {
         isDemoMode = response.isDemoMode ?? false;
         chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
         if (isDemoMode) {
+            enablePreHide();
             scanAndMask();
             if (isOnSupportedPlatform()) {
                 startPlatformWatcher();
                 startClipboardInterceptor();
                 startInputPolling();
                 scanForNewKeys();
-                // Keep pre-hide CSS active for future modals
             }
         } else {
             removePreHide();
