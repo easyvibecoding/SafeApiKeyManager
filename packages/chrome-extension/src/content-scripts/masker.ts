@@ -14,6 +14,7 @@ import {
     matchAgainstCapturePatterns,
     getPlatformSelectors,
     getWatchSelectors,
+    DOMAIN_SERVICE_MAP,
     type CaptureMatch,
 } from './capture-patterns';
 
@@ -117,10 +118,25 @@ chrome.runtime.onMessage.addListener((message) => {
     switch (action) {
         case 'state_changed':
             isDemoMode = message.payload?.isDemoMode ?? false;
+            // Persist for pre-hide.ts on next page load
+            chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
             if (isDemoMode) {
                 scanAndMask();
+                if (isOnSupportedPlatform()) {
+                    startPlatformWatcher();
+                    startClipboardInterceptor();
+                    startInputPolling();
+                    scanForNewKeys();
+                    // Keep pre-hide CSS active — protects modals that appear later
+                }
             } else {
                 unmaskAll();
+                removePreHide();
+                if (!isCaptureMode) {
+                    stopPlatformWatcher();
+                    stopClipboardInterceptor();
+                    stopInputPolling();
+                }
             }
             break;
 
@@ -260,6 +276,28 @@ function unmaskAll() {
     maskRecords = [];
 }
 
+// MARK: - Pre-hide Removal
+
+/** Remove the pre-hide CSS injected by pre-hide.ts after masking is done */
+function removePreHide() {
+    const el = document.getElementById('demosafe-pre-hide');
+    if (el) {
+        el.remove();
+    }
+}
+
+// MARK: - Auto Capture in Demo Mode
+
+/** Check if current page is a supported platform for auto-capture */
+function isOnSupportedPlatform(): boolean {
+    return window.location.hostname in DOMAIN_SERVICE_MAP;
+}
+
+/** Auto-capture should run when Demo Mode is ON and on a supported platform */
+function shouldAutoCapture(): boolean {
+    return (isDemoMode && isOnSupportedPlatform()) || isCaptureMode;
+}
+
 // MARK: - Active Capture: Mode Management
 
 function handleCaptureModeChanged(isActive: boolean, timeout: number) {
@@ -272,12 +310,13 @@ function handleCaptureModeChanged(isActive: boolean, timeout: number) {
         startCaptureTimeout(timeout);
         startClipboardInterceptor();
         startPlatformWatcher();
-        // Immediately scan current page
+        startInputPolling();
         scanForNewKeys();
     } else {
         stopCaptureTimeout();
         stopClipboardInterceptor();
         stopPlatformWatcher();
+        stopInputPolling();
         submittedKeys.clear();
     }
 }
@@ -303,7 +342,9 @@ function stopCaptureTimeout() {
 // MARK: - Active Capture: Three-Layer Scanning
 
 function scanForNewKeys() {
-    if (!isCaptureMode) return;
+    if (!shouldAutoCapture()) return;
+
+
 
     const hostname = window.location.hostname;
     const allMatches: CaptureMatch[] = [];
@@ -333,9 +374,9 @@ function scanForNewKeys() {
     }
 
     // Layer 2: Attribute scan — read hidden element values
-    // Input fields (password, readonly text, hidden)
+    // Input fields (password, readonly, hidden, and typeless inputs)
     const inputs = document.querySelectorAll<HTMLInputElement>(
-        'input[type="text"], input[type="password"], input[type="hidden"]'
+        'input[type="text"], input[type="password"], input[type="hidden"], input[readonly], input:not([type])'
     );
     for (const input of inputs) {
         const val = input.value;
@@ -377,8 +418,13 @@ function scanForNewKeys() {
     // Layer 4: Platform-specific selectors
     scanPlatformSpecific(hostname, allMatches);
 
-    // Submit unique matches
+    // Deduplicate within this scan cycle before submitting
+    const seen = new Set<string>();
     for (const match of allMatches) {
+        const key = match.rawValue.trim();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        match.rawValue = key;
         submitCapturedKey(match);
     }
 }
@@ -466,7 +512,7 @@ function startPlatformWatcher() {
                 if (isRelevant) {
                     // Modal/dialog appeared — scan immediately for keys
                     setTimeout(() => {
-                        if (isCaptureMode) scanForNewKeys();
+                        if (shouldAutoCapture()) scanForNewKeys();
                     }, 200); // Small delay for DOM to settle
                     return;
                 }
@@ -481,7 +527,7 @@ function startPlatformWatcher() {
                             if (oel.getAttribute('data-state') === 'open' ||
                                 (oel as HTMLElement).offsetParent !== null) {
                                 setTimeout(() => {
-                                    if (isCaptureMode) scanForNewKeys();
+                                    if (shouldAutoCapture()) scanForNewKeys();
                                 }, 200);
                                 return;
                             }
@@ -506,6 +552,32 @@ function stopPlatformWatcher() {
     if (platformWatcher) {
         platformWatcher.disconnect();
         platformWatcher = null;
+    }
+}
+
+// MARK: - Active Capture: Input Value Polling
+
+let inputPollTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Poll input values periodically. MutationObserver cannot detect
+ * input.value changes set via JavaScript (SPA frameworks).
+ */
+function startInputPolling() {
+    if (inputPollTimer) return;
+    inputPollTimer = setInterval(() => {
+        if (!shouldAutoCapture()) {
+            stopInputPolling();
+            return;
+        }
+        scanForNewKeys();
+    }, 500); // Check every 500ms
+}
+
+function stopInputPolling() {
+    if (inputPollTimer) {
+        clearInterval(inputPollTimer);
+        inputPollTimer = null;
     }
 }
 
@@ -547,9 +619,11 @@ function handleCopyEvent() {
 // MARK: - Active Capture: Submission
 
 function submitCapturedKey(match: CaptureMatch) {
+    const trimmedValue = match.rawValue.trim();
     // Dedup: skip if already submitted in this capture session
-    if (submittedKeys.has(match.rawValue)) return;
-    submittedKeys.add(match.rawValue);
+    if (submittedKeys.has(trimmedValue)) return;
+    submittedKeys.add(trimmedValue);
+    match.rawValue = trimmedValue;
 
     // Mask preview: show prefix + ****
     const preview = match.rawValue.length > 12
@@ -567,31 +641,183 @@ function submitCapturedKey(match: CaptureMatch) {
         },
     }).catch(() => {});
 
+    // Immediately mask in DOM without waiting for Core round-trip
+    if (isDemoMode) {
+        immediatelyMaskValue(trimmedValue, match.serviceName, preview);
+    }
+
     showToast(match.serviceName, preview);
 }
 
+/**
+ * Immediately mask a captured key value in the DOM.
+ * Does not wait for Core's pattern_cache_sync — provides instant visual protection.
+ */
+function immediatelyMaskValue(rawValue: string, serviceName: string, maskedPreview: string) {
+    const escapedValue = rawValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedValue, 'g');
+
+    // Scan text nodes
+    const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode(node) {
+                const parent = node.parentElement;
+                if (parent?.classList.contains(MASK_CLASS)) return NodeFilter.FILTER_REJECT;
+                if (parent?.hasAttribute(MASK_ATTR)) return NodeFilter.FILTER_REJECT;
+                const tag = parent?.tagName;
+                if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT;
+                if (!node.textContent?.includes(rawValue)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            },
+        },
+    );
+
+    const nodesToMask: Text[] = [];
+    let textNode: Text | null;
+    while ((textNode = walker.nextNode() as Text | null)) {
+        nodesToMask.push(textNode);
+    }
+
+    for (const node of nodesToMask) {
+        const text = node.textContent ?? '';
+        regex.lastIndex = 0;
+        if (!regex.test(text)) continue;
+        regex.lastIndex = 0;
+
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+            }
+
+            const span = document.createElement('span');
+            span.className = MASK_CLASS;
+            span.setAttribute(MASK_ATTR, 'captured');
+            span.setAttribute('title', `[Demo-safe] ${serviceName}`);
+            span.textContent = maskedPreview;
+            fragment.appendChild(span);
+
+            maskRecords.push({
+                element: span,
+                originalText: match[0],
+                keyId: 'captured',
+            });
+
+            lastIndex = match.index + match[0].length;
+        }
+
+        if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+
+        if (lastIndex > 0) {
+            node.parentNode?.replaceChild(fragment, node);
+        }
+    }
+
+    // Also mask in input/textarea values (replace with masked preview)
+    document.querySelectorAll<HTMLInputElement>('input, textarea').forEach(el => {
+        if (el.value?.includes(rawValue)) {
+            el.value = el.value.replace(rawValue, maskedPreview);
+            el.setAttribute('data-demosafe-original', rawValue);
+            // Override pre-hide: make masked value visible
+            el.style.color = '';
+            el.style.setProperty('color', 'inherit', 'important');
+        }
+    });
+}
+
 // MARK: - Toast Notification
+
+/**
+ * Find the topmost visible container for toast injection.
+ * If a modal/dialog is open, returns it so toast renders above the backdrop.
+ * Otherwise returns document.body.
+ */
+function findTopmostContainer(): Element {
+    // Check for open dialogs (native <dialog> or role="dialog")
+    const dialogs = document.querySelectorAll('dialog[open], [role="dialog"], [data-state="open"], [class*="modal"]');
+    let topmost: Element | null = null;
+    let topZ = -1;
+
+    for (const el of dialogs) {
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        if ((el as HTMLElement).offsetParent === null && style.position !== 'fixed') continue;
+
+        const z = parseInt(style.zIndex) || 0;
+        if (z >= topZ) {
+            topZ = z;
+            topmost = el;
+        }
+    }
+
+    // Also check for overlay/backdrop containers with high z-index
+    if (!topmost) {
+        document.querySelectorAll('div[style*="z-index"], div[class*="overlay"], div[class*="backdrop"]').forEach(el => {
+            const style = window.getComputedStyle(el);
+            const z = parseInt(style.zIndex) || 0;
+            if (z > 1000 && style.position === 'fixed' && (el as HTMLElement).offsetParent !== null) {
+                if (z >= topZ) {
+                    topZ = z;
+                    topmost = el;
+                }
+            }
+        });
+    }
+
+    return topmost || document.body;
+}
 
 function showToast(serviceName: string, preview: string) {
     const existing = document.querySelector('.demosafe-toast');
     if (existing) existing.remove();
 
     const toast = document.createElement('div');
+    // Use inline styles to guarantee visibility above any modal/overlay
     toast.className = 'demosafe-toast';
+    toast.style.cssText = `
+        position: fixed !important;
+        top: 16px !important;
+        right: 16px !important;
+        z-index: 2147483647 !important;
+        background: #1a1a2e !important;
+        color: #fff !important;
+        padding: 10px 16px !important;
+        border-radius: 8px !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        font-size: 13px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.3s, transform 0.3s;
+        pointer-events: none;
+    `;
     toast.innerHTML =
-        `<span class="toast-icon">🔑</span>` +
-        `<span class="toast-service">${serviceName}</span> ` +
+        `<span style="margin-right:8px">🔑</span>` +
+        `<span style="color:#f59e0b;font-weight:600">${serviceName}</span> ` +
         `key captured: <code>${preview}</code>`;
-    document.body.appendChild(toast);
+
+    // Find the topmost visible container to inject toast into.
+    // If a modal/dialog is open, inject inside it so toast is above the backdrop.
+    const topContainer = findTopmostContainer();
+    topContainer.appendChild(toast);
 
     requestAnimationFrame(() => {
-        toast.classList.add('show');
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
     });
 
     setTimeout(() => {
-        toast.classList.remove('show');
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
         setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, 10000);
 }
 
 // MARK: - MutationObserver
@@ -608,7 +834,7 @@ function debouncedCaptureScan() {
     if (captureDebounceTimer) clearTimeout(captureDebounceTimer);
     captureDebounceTimer = setTimeout(() => {
         captureDebounceTimer = null;
-        if (isCaptureMode) scanForNewKeys();
+        if (shouldAutoCapture()) scanForNewKeys();
     }, 300);
 }
 
@@ -638,7 +864,7 @@ function startObserver() {
 
         if (shouldRescan) {
             debouncedScan();
-            if (isCaptureMode) {
+            if (shouldAutoCapture()) {
                 debouncedCaptureScan();
             }
         }
@@ -659,8 +885,18 @@ startObserver();
 chrome.runtime.sendMessage({ type: 'get_state' }, (response) => {
     if (response) {
         isDemoMode = response.isDemoMode ?? false;
+        chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
         if (isDemoMode) {
             scanAndMask();
+            if (isOnSupportedPlatform()) {
+                startPlatformWatcher();
+                startClipboardInterceptor();
+                startInputPolling();
+                scanForNewKeys();
+                // Keep pre-hide CSS active for future modals
+            }
+        } else {
+            removePreHide();
         }
         // Restore capture mode if active
         if (response.isCaptureMode) {

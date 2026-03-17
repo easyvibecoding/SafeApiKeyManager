@@ -334,8 +334,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     if (message.type === 'submit_captured_key') {
+        console.log('[DemoSafe BG] submit_captured_key received:', message.payload?.suggestedService, 'connected:', state.isConnected, 'rawValue length:', message.payload?.rawValue?.length);
         if (state.isConnected) {
             sendRequestToCore('submit_captured_key', message.payload);
+            console.log('[DemoSafe BG] forwarded to Core');
+        } else {
+            console.log('[DemoSafe BG] NOT connected, cannot forward');
         }
         state.capturedCount++;
         broadcastStateToPopup();

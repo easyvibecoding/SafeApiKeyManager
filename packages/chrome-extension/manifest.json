@@ -25,9 +25,30 @@
         "https://console.cloud.google.com/*",
         "https://portal.azure.com/*",
         "https://github.com/settings/tokens*",
+        "https://github.com/settings/personal-access-tokens*",
         "https://huggingface.co/settings/tokens*",
         "https://app.sendgrid.com/*",
-        "https://api.slack.com/*"
+        "https://api.slack.com/*",
+        "https://gitlab.com/-/user_settings/personal_access_tokens*"
+      ],
+      "js": ["dist/content-scripts/pre-hide.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://platform.openai.com/*",
+        "https://console.anthropic.com/*",
+        "https://platform.claude.com/*",
+        "https://console.aws.amazon.com/*",
+        "https://dashboard.stripe.com/*",
+        "https://console.cloud.google.com/*",
+        "https://portal.azure.com/*",
+        "https://github.com/settings/tokens*",
+        "https://github.com/settings/personal-access-tokens*",
+        "https://huggingface.co/settings/tokens*",
+        "https://app.sendgrid.com/*",
+        "https://api.slack.com/*",
+        "https://gitlab.com/-/user_settings/personal_access_tokens*"
       ],
       "js": ["dist/content-scripts/masker.js"],
       "run_at": "document_idle"

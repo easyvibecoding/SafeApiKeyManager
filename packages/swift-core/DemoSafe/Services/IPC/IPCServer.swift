@@ -1,5 +1,8 @@
 import Foundation
 import Network
+import os
+
+private let ipcLogger = Logger(subsystem: "com.demosafe", category: "IPCServer")
 
 /// Localhost WebSocket server for extension communication.
 /// Binds ONLY to 127.0.0.1 — external interfaces are forbidden (security red line).
@@ -205,8 +208,10 @@ final class IPCServer {
               let action = json["action"] as? String,
               let messageId = json["id"] as? String,
               let payload = json["payload"] as? [String: Any] else {
+            ipcLogger.warning("Failed to parse message")
             return
         }
+        ipcLogger.warning("handleMessage: action=\(action) authenticated=\(self.connections[clientId]?.isAuthenticated ?? false)")
 
         switch action {
         case "handshake":
@@ -398,10 +403,12 @@ final class IPCServer {
         }
 
         // Find or create service
+        ipcLogger.warning("submit_captured_key: service=\(suggestedService) confidence=\(confidence) rawLen=\(rawValue.count)")
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else { ipcLogger.error("self is nil in submit_captured_key"); return }
 
             var service = self.vaultManager.getAllServices().first(where: { $0.name == suggestedService })
+            ipcLogger.warning("existing service: \(service?.name ?? "nil")")
             if service == nil {
                 let defaultPattern = ".*" // Generic fallback pattern
                 let newService = Service(
@@ -424,6 +431,7 @@ final class IPCServer {
             let escapedValue = NSRegularExpression.escapedPattern(for: rawValue)
 
             do {
+                ipcLogger.warning("storing key: label=\(label) patternLen=\(escapedValue.count)")
                 _ = try self.vaultManager.addKey(
                     label: label,
                     serviceId: svc.id,
@@ -431,6 +439,7 @@ final class IPCServer {
                     maskFormat: svc.defaultMaskFormat,
                     value: valueData
                 )
+                ipcLogger.warning("key stored successfully")
 
                 // pattern_cache_sync is automatically broadcast via NotificationCenter
 
@@ -447,6 +456,7 @@ final class IPCServer {
                 ]
                 self.sendJSON(response, clientId: clientId)
             } catch {
+                ipcLogger.error("FAILED to store key: \(error)")
                 self.sendError(messageId: messageId, action: "submit_captured_key", code: "STORE_FAILED", message: "Failed to store key: \(error)", clientId: clientId)
             }
         }

@@ -201,12 +201,13 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         platformSelectors: [{
             hostname: 'github.com',
             selectors: [
-                'clipboard-copy[value]',   // Web Component with token in value attr
-                '.flash code',             // Flash notice after creation
-                '#new-oauth-token code',
+                'code#new-oauth-token',    // Classic PAT: <code class="token" id="new-oauth-token">
+                'code.token',              // Classic PAT: class-based fallback
+                'clipboard-copy[value]',   // Fine-grained PAT: Web Component
+                '.flash code',             // Flash notice
             ],
-            attributes: ['value'],         // Read value attribute from clipboard-copy
-            watchSelector: '.flash',
+            attributes: ['value'],
+            watchSelector: '#new-oauth-token, .flash',
             strategy: 'flash_notice',
         }],
     },
@@ -220,9 +221,14 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         minLength: 93,
         platformSelectors: [{
             hostname: 'github.com',
-            selectors: ['clipboard-copy[value]', '.flash code'],
+            selectors: [
+                'clipboard-copy[value]',
+                'code#new-oauth-token',
+                'code.token',
+                '.flash code',
+            ],
             attributes: ['value'],
-            watchSelector: '.flash',
+            watchSelector: '#new-oauth-token, .flash',
             strategy: 'flash_notice',
         }],
     },
@@ -252,12 +258,13 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         platformSelectors: [{
             hostname: 'huggingface.co',
             selectors: [
-                // Token creation page shows full token
-                '.token-value code',
+                'input[readonly]',         // Token creation: <input readonly> (no type attr)
                 'input[type="text"][readonly]',
+                '.token-value code',
                 'code',
             ],
-            watchSelector: '.flash, .notification, [role="alert"]',
+            attributes: ['value'],
+            watchSelector: 'input[readonly]',
             strategy: 'modal_watch',
         }],
     },
