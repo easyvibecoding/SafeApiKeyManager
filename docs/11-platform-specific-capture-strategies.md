@@ -1,7 +1,8 @@
 # 各平台 API Key 截取策略
 
-> 狀態：❌ 尚未實作（platform-specific 部分）
-> 基礎設施（通用 TreeWalker + capture-patterns.ts）已完成
+> 狀態：✅ 核心架構已完成
+> 已測試平台：GitHub (Classic PAT)、HuggingFace、Anthropic/Claude
+> 最後更新：2026-03-17
 
 ---
 
@@ -246,103 +247,83 @@ if (rawValue.includes('...') || rawValue.length < 33) continue;
 
 ---
 
-## 實作架構
+## 實作架構（已完成）
 
-### capture-patterns.ts 擴展
+### Single Source of Truth: capture-patterns.ts
+
+所有平台定義集中在 `capture-patterns.ts`。新增平台只需加一個 entry：
 
 ```typescript
 export interface CapturePattern {
-    id: string;
-    serviceName: string;
-    prefix: string;
-    regex: RegExp;
-    confidence: number;
-    minLength: number;
-    // 新增：平台專屬選擇器
-    platformSelectors?: PlatformSelector[];
-}
-
-export interface PlatformSelector {
-    hostname: string;          // 匹配的 domain
-    selectors: string[];       // CSS selectors
-    attributes?: string[];     // 要讀取的 attribute（如 value）
-    watchSelector?: string;    // MutationObserver 監聽的容器
-    strategy: 'modal_watch' | 'attribute_read' | 'flash_notice' | 'reveal_toggle';
+    id: string;                        // 唯一識別
+    serviceName: string;               // 服務名稱
+    prefix: string;                    // Key 前綴
+    regex: RegExp;                     // 偵測用 regex
+    confidence: number;                // 基礎信心分數
+    minLength: number;                 // 最短匹配長度
+    preHideCSS?: string;              // document_start 注入的隱藏 CSS
+    platformSelectors?: PlatformSelector[];  // 平台專屬 DOM 選擇器
 }
 ```
 
-### masker.ts 擴展
+### 新增平台範例
 
 ```typescript
-function scanForNewKeys() {
-    // 1. 通用 TreeWalker（現有）
-    // 2. 通用 attribute scan（現有）
-    // 3. 平台專屬 selector scan（新增）
-    scanPlatformSpecific(hostname, allMatches);
+// 在 CAPTURE_PATTERNS 陣列中加入一個 entry：
+{
+    id: 'vercel',
+    serviceName: 'Vercel',
+    prefix: 'vercel_',
+    regex: /vercel_[a-zA-Z0-9]{24,}/g,
+    confidence: 0.90,
+    minLength: 31,
+    preHideCSS: 'input[readonly] { visibility: hidden !important; }',
+    platformSelectors: [{
+        hostname: 'vercel.com',
+        selectors: ['input[readonly]'],
+        attributes: ['value'],
+        strategy: 'reveal_toggle',
+    }],
 }
-
-function scanPlatformSpecific(hostname: string, matches: CaptureMatch[]) {
-    for (const pattern of CAPTURE_PATTERNS) {
-        if (!pattern.platformSelectors) continue;
-        for (const ps of pattern.platformSelectors) {
-            if (ps.hostname !== hostname) continue;
-            for (const selector of ps.selectors) {
-                const elements = document.querySelectorAll(selector);
-                // 讀取 textContent 或指定 attribute
-                // 匹配 pattern.regex
-                // 加入 matches
-            }
-        }
-    }
-}
+// 然後在 manifest.json 加 URL match，完成
 ```
 
-### MutationObserver 平台專屬監聽
+### 自動衍生的功能
 
-```typescript
-// 針對一次性 modal/dialog 的即時監聽
-function startPlatformWatcher(hostname: string) {
-    const patterns = CAPTURE_PATTERNS.filter(p =>
-        p.platformSelectors?.some(ps =>
-            ps.hostname === hostname && ps.watchSelector
-        )
-    );
-    if (patterns.length === 0) return;
+| 匯出 | 來源 | 用途 |
+|------|------|------|
+| `KEY_PREFIXES[]` | 自動從 CAPTURE_PATTERNS 提取 | pre-hide instant observer |
+| `getPreHideCSS(hostname)` | 收集該 hostname 的 preHideCSS | document_start CSS 注入 |
+| `getPlatformSelectors(hostname)` | 過濾 platformSelectors | 平台專屬 DOM 掃描 |
+| `getWatchSelectors(hostname)` | 過濾 watchSelector | MutationObserver 監聽 |
 
-    // 建立專屬 MutationObserver 監聽 modal 出現
-    const watcher = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType !== Node.ELEMENT_NODE) continue;
-                const el = node as Element;
-                // 檢查是否匹配 watchSelector
-                // 如果是 → 立即掃描 modal 內容
-            }
-        }
-    });
-    watcher.observe(document.body, { childList: true, subtree: true });
-}
-```
+### 四層偵測機制
+
+| Layer | 名稱 | 說明 |
+|-------|------|------|
+| 1 | TreeWalker | 掃描所有文字節點（通用） |
+| 2 | Attribute scan | 讀取 input.value、clipboard-copy[value]（通用） |
+| 3 | Clipboard intercept | 監聽 copy 事件（通用） |
+| 4 | Platform selectors | 平台專屬 CSS selector 定位 |
+
+### Pre-hide 防閃現（兩層）
+
+| Layer | 時機 | 方式 |
+|-------|------|------|
+| CSS pre-hide | document_start | 從 preHideCSS 欄位收集，`visibility: hidden` |
+| Instant Observer | document_start | 只監聽 dialog/modal 內新增元素 |
 
 ---
 
-## 實作順序
+## 測試結果
 
-1. 擴展 `CapturePattern` 介面加入 `platformSelectors`
-2. 為每個平台定義 selectors + strategy
-3. `masker.ts` 加入 `scanPlatformSpecific()` 函數
-4. `masker.ts` 加入 `startPlatformWatcher()` for modal 監聽
-5. 加入截斷版過濾邏輯（排除 `...` 和過短的值）
-6. 逐平台測試
-
-## 測試計畫
-
-| 平台 | 測試方式 | 預期結果 |
-|------|---------|---------|
-| OpenAI | 建立新 key → modal 出現 | 即時截取完整 key |
-| Anthropic | 建立新 key → dialog 出現 | 即時截取完整 key |
-| GitHub | 建立新 PAT → flash notice | 從 clipboard-copy[value] 截取 |
-| Google Cloud | 點 "Show key" | 截取顯示的 key |
-| HuggingFace | 建立新 token | 截取完整 token，忽略截斷版 |
-| Stripe | Reveal test key | 截取顯示的 key |
-| 測試頁面 | 靜態 + 動態 key | 所有 pattern 偵測 + MutationObserver |
+| 平台 | 截取 | 遮蔽 | Pre-hide | Toast | 存入 Core |
+|------|------|------|----------|-------|----------|
+| GitHub (Classic PAT) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| HuggingFace | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Anthropic/Claude | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 測試頁面 | ✅ | ✅ | — | ✅ | ✅ |
+| OpenAI | ❓ 未測 | ❓ | ❓ | ❓ | ❓ |
+| Stripe | ❓ 未測 | ❓ | ❓ | ❓ | ❓ |
+| Google Cloud | ❓ 未測 | ❓ | ❓ | ❓ | ❓ |
+| AWS | ❓ 未測 | ❓ | ❓ | ❓ | ❓ |
