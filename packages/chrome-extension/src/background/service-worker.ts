@@ -43,6 +43,8 @@ interface DemoSafeState {
     captureTimeoutEnd: number | null; // timestamp ms
     capturedCount: number;
     connectionPath: ConnectionPath;
+    isUniversalMasking: boolean;
+    isUniversalDetection: boolean;
 }
 
 // NMH relay actions — these can be forwarded via Native Messaging Host when WS is down
@@ -64,7 +66,14 @@ const state: DemoSafeState = {
     captureTimeoutEnd: null,
     capturedCount: 0,
     connectionPath: 'offline',
+    isUniversalMasking: false,
+    isUniversalDetection: false,
 };
+
+chrome.storage.local.get(['universalMasking', 'universalDetection'], (result) => {
+    state.isUniversalMasking = result.universalMasking ?? false;
+    state.isUniversalDetection = result.universalDetection ?? false;
+});
 
 // MARK: - Native Messaging Host
 
@@ -445,7 +454,7 @@ function broadcastStateToPopup() {
 }
 
 // Listen for messages from popup and content scripts
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'get_state') {
         // If WS is disconnected, try NMH to get fresh state
         if (!state.isConnected) {
@@ -513,6 +522,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (message.type === 'submit_detected') {
         sendRequestToCore('submit_detected', message.payload);
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    if (message.type === 'toggle_universal_masking') {
+        state.isUniversalMasking = !state.isUniversalMasking;
+        chrome.storage.local.set({ universalMasking: state.isUniversalMasking });
+        broadcastStateToPopup();
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    if (message.type === 'toggle_universal_detection') {
+        state.isUniversalDetection = !state.isUniversalDetection;
+        chrome.storage.local.set({ universalDetection: state.isUniversalDetection });
+        broadcastStateToPopup();
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    if (message.type === 'confirm_captured_key') {
+        const payload = { ...message.payload, confidence: 1.0 };
+        sendRequest('submit_captured_key', payload).then((result) => {
+            if (result && result.status === 'success') {
+                const tabId = sender.tab?.id;
+                if (tabId) {
+                    chrome.tabs.sendMessage(tabId, {
+                        action: 'key_confirmed',
+                        payload: { serviceName: message.payload.suggestedService },
+                    }).catch(() => {});
+                }
+            }
+        });
+        state.capturedCount++;
+        broadcastStateToPopup();
         sendResponse({ ok: true });
         return true;
     }

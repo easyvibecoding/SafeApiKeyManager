@@ -55,7 +55,7 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
         regex: /sk-proj-[A-Za-z0-9_-]{20,}/g,
         confidence: 0.95,
         minLength: 28,
-        preHideCSS: `[data-state="open"] code, td.api-key-token .api-key-token-value { visibility: hidden !important; }`,
+        preHideCSS: `[data-state="open"] code { visibility: hidden !important; }`,
         platformSelectors: [{
             hostname: 'platform.openai.com',
             selectors: [
@@ -366,6 +366,16 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
             strategy: 'flash_notice',
         }],
     },
+    // Generic key-like pattern: common prefixes + long alphanumeric
+    // Low confidence — triggers confirmation dialog instead of auto-store
+    {
+        id: 'generic-key',
+        serviceName: 'Unknown',
+        prefix: '',
+        regex: /(?:key|token|api|secret|sk|pk|rk)[-_][A-Za-z0-9_-]{30,}/g,
+        confidence: 0.50,
+        minLength: 34,
+    },
 ];
 
 // MARK: - Domain Mapping
@@ -393,8 +403,8 @@ const DOMAIN_CONFIDENCE_PENALTY = -0.1;
 
 // MARK: - Derived Exports (auto-generated from CAPTURE_PATTERNS)
 
-/** All unique key prefixes — derived from CAPTURE_PATTERNS */
-export const KEY_PREFIXES: string[] = [...new Set(CAPTURE_PATTERNS.map(p => p.prefix))];
+/** All unique key prefixes — derived from CAPTURE_PATTERNS (empty prefixes excluded) */
+export const KEY_PREFIXES: string[] = [...new Set(CAPTURE_PATTERNS.map(p => p.prefix).filter(p => p.length > 0))];
 
 /**
  * Get pre-hide CSS rules for a hostname.

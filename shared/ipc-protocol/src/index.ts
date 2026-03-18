@@ -24,6 +24,7 @@ export type RequestAction =
     | 'request_paste'
     | 'request_paste_group'
     | 'submit_detected'
+    | 'submit_captured_key'
     | 'resolve_mask';
 
 export interface HandshakePayload {
