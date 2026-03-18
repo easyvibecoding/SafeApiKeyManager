@@ -283,7 +283,7 @@ scripts/platform-analysis/reports/
 ### Skill 檔案結構
 
 ```
-SafeApiKeyManager/
+demosafe/
 └── .claude/
     └── skills/
         └── analyze-platform/

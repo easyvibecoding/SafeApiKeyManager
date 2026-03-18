@@ -54,8 +54,8 @@ Demo-safe 是一款 macOS 系統級工具，從 API Key 進入工作流程的那
 ### 1. 複製並安裝依賴
 
 ```bash
-git clone https://github.com/easyvibecoding/SafeApiKeyManager.git
-cd SafeApiKeyManager
+git clone https://github.com/easyvibecoding/demosafe.git
+cd demosafe
 npm install
 ```
 
@@ -94,7 +94,7 @@ Swift Core 啟動時會寫入 `~/.demosafe/ipc.json`，包含 WebSocket port 和
 ## 專案結構
 
 ```
-SafeApiKeyManager/
+demosafe/
 ├── packages/
 │   ├── swift-core/          # macOS Menu Bar App (Swift/SwiftUI)
 │   ├── vscode-extension/    # VS Code Extension (TypeScript)

@@ -7,7 +7,7 @@ Demo-safe API Key Manager — macOS system-level tool that masks API keys during
 ## Git
 
 - **Author**: All commits MUST use `--author="easyvibecoding <easyvibecoding@gmail.com>"`
-- **Remote**: `git@github-easyvibecoding:easyvibecoding/SafeApiKeyManager.git` (SSH alias)
+- **Remote**: `git@github-easyvibecoding:easyvibecoding/demosafe.git` (SSH alias)
 - **Convention**: [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 - **License**: Apache License 2.0 — all new files must be consistent
 

@@ -54,8 +54,8 @@ Demo-safe is a macOS system-level tool that masks API keys from the moment they 
 ### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/easyvibecoding/SafeApiKeyManager.git
-cd SafeApiKeyManager
+git clone https://github.com/easyvibecoding/demosafe.git
+cd demosafe
 npm install
 ```
 
@@ -94,7 +94,7 @@ The Swift Core writes `~/.demosafe/ipc.json` on startup with the WebSocket port 
 ## Project Structure
 
 ```
-SafeApiKeyManager/
+demosafe/
 ├── packages/
 │   ├── swift-core/          # macOS Menu Bar App (Swift/SwiftUI)
 │   ├── vscode-extension/    # VS Code Extension (TypeScript)
