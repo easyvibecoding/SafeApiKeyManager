@@ -1,12 +1,23 @@
+<div align="center">
+
 # Demo-safe API Key Manager
 
-[English](README.md) | **繁體中文**
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
+[![Swift](https://img.shields.io/badge/Swift-5.9-F05138.svg)](https://swift.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg)](https://www.typescriptlang.org)
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg)]()
+[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg)]()
 
 **讓 API Key 在展示、直播和教學中徹底隱形。**
 
-Demo-safe 是一款 macOS 系統級工具，從 API Key 進入工作流程的那一刻起就自動遮蔽。如同 macOS 鑰匙圈，金鑰永遠不會以明文顯示在螢幕上——但透過複製貼上仍然完全可用。
-
 螢幕顯示 `sk-proj-****...****`，剪貼簿裡是完整的金鑰。
+
+</div>
+
+[English](README.md) | **繁體中文**
+
+Demo-safe 是一款 macOS 系統級工具，從 API Key 進入工作流程的那一刻起就自動遮蔽。如同 macOS 鑰匙圈，金鑰永遠不會以明文顯示在螢幕上——但透過複製貼上仍然完全可用。
 
 ## 功能特色
 

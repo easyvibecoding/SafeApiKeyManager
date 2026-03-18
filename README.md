@@ -1,12 +1,23 @@
+<div align="center">
+
 # Demo-safe API Key Manager
 
-**English** | [繁體中文](README.zh-TW.md)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
+[![Swift](https://img.shields.io/badge/Swift-5.9-F05138.svg)](https://swift.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg)](https://www.typescriptlang.org)
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg)]()
+[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg)]()
 
 **Make API keys invisible during demos, livestreams, and tutorials.**
 
-Demo-safe is a macOS system-level tool that masks API keys from the moment they enter your workflow. Like macOS Keychain, keys are never displayed in plaintext on any screen — yet they remain fully functional via copy-paste.
+Screen shows `sk-proj-****...****` — clipboard holds the complete key.
 
-Screen shows `sk-proj-****...****` but clipboard holds the complete key.
+</div>
+
+**English** | [繁體中文](README.zh-TW.md)
+
+Demo-safe is a macOS system-level tool that masks API keys from the moment they enter your workflow. Like macOS Keychain, keys are never displayed in plaintext on any screen — yet they remain fully functional via copy-paste.
 
 ## Features
 
