@@ -22,7 +22,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 DemoSafe's Chrome Extension detects and masks API keys on supported platforms. The API key ecosystem is vast — we can't cover every platform alone and welcome community contributions.
 
-**Two files to edit, then build.** Here's the full walkthrough using a fictional "Acme API" as an example:
+**Two files to edit (three if clipboard interception is needed), then build.** Here's the full walkthrough using a fictional "Acme API" as an example:
 
 ### Step 1: Add pattern to `capture-patterns.ts`
 
@@ -85,6 +85,21 @@ Edit [`packages/chrome-extension/manifest.json`](packages/chrome-extension/manif
     "run_at": "document_idle"
 }
 ```
+
+**c) Clipboard-patch entry** (only if the platform copies keys via `navigator.clipboard.writeText` instead of DOM text):
+```json
+{
+    "matches": [
+        "https://aistudio.google.com/*",
+        ...
+        "https://dashboard.acme.com/*"
+    ],
+    "js": ["dist/content-scripts/clipboard-patch.js"],
+    "run_at": "document_start",
+    "world": "MAIN"
+}
+```
+This injects into the page context (not the isolated extension world) to intercept programmatic clipboard writes. Skip this if the platform shows keys as visible DOM text.
 
 ### Step 3: Build
 
