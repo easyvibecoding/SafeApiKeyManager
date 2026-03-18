@@ -366,6 +366,16 @@ export const CAPTURE_PATTERNS: CapturePattern[] = [
             strategy: 'flash_notice',
         }],
     },
+    // Generic key-like pattern: common prefixes + long alphanumeric
+    // Low confidence — triggers confirmation dialog instead of auto-store
+    {
+        id: 'generic-key',
+        serviceName: 'Unknown',
+        prefix: '',
+        regex: /(?:key|token|api|secret|sk|pk|rk)[-_][A-Za-z0-9_-]{30,}/g,
+        confidence: 0.50,
+        minLength: 34,
+    },
 ];
 
 // MARK: - Domain Mapping

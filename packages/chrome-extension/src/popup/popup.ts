@@ -11,6 +11,8 @@ interface DemoSafeState {
     captureTimeoutEnd: number | null;
     capturedCount: number;
     connectionPath: 'ws' | 'nmh' | 'offline';
+    isUniversalMasking: boolean;
+    isUniversalDetection: boolean;
 }
 
 const CONNECTION_LABELS: Record<DemoSafeState['connectionPath'], string> = {
@@ -92,6 +94,10 @@ function updateUI(state: DemoSafeState) {
         captureBtn.style.display = 'none';
         stopCountdown();
     }
+
+    // Universal toggles
+    (document.getElementById('toggleUniversalMasking') as HTMLInputElement).checked = state.isUniversalMasking ?? false;
+    (document.getElementById('toggleUniversalDetection') as HTMLInputElement).checked = state.isUniversalDetection ?? false;
 }
 
 function startCountdown(endTimestamp: number | null) {
@@ -145,4 +151,12 @@ document.getElementById('toggleDemo')!.addEventListener('click', () => {
 // Toggle capture mode
 document.getElementById('toggleCapture')!.addEventListener('click', () => {
     chrome.runtime.sendMessage({ type: 'toggle_capture_mode' });
+});
+
+// Toggle universal masking / detection
+document.getElementById('toggleUniversalMasking')!.addEventListener('change', () => {
+    chrome.runtime.sendMessage({ type: 'toggle_universal_masking' });
+});
+document.getElementById('toggleUniversalDetection')!.addEventListener('change', () => {
+    chrome.runtime.sendMessage({ type: 'toggle_universal_detection' });
 });

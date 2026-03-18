@@ -36,6 +36,8 @@ interface MaskRecord {
 const MASK_ATTR = 'data-demosafe-masked';
 const MASK_CLASS = 'demosafe-mask';
 const CAPTURE_TIMEOUT_DEFAULT = 300; // 5 minutes in seconds
+const CONFIDENCE_HIGH = 0.7;
+const CONFIDENCE_MIN = 0.35;
 
 // MARK: - Passive Masking State
 
@@ -47,8 +49,11 @@ let maskRecords: MaskRecord[] = [];
 // MARK: - Active Capture State
 
 let isCaptureMode = false;
+let isUniversalMasking = false;
+let isUniversalDetection = false;
 let captureTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 const submittedKeys: Set<string> = new Set();
+const rejectedKeys: Set<string> = new Set();
 
 // MARK: - Shared State
 
@@ -98,6 +103,30 @@ style.textContent = `
   }
   .demosafe-toast .toast-icon { margin-right: 8px; }
   .demosafe-toast .toast-service { color: #f59e0b; font-weight: 600; }
+  .demosafe-confirm-dialog {
+    position: fixed; top: 16px; right: 16px; z-index: 2147483647;
+    width: 360px; background: #1a1a2e; color: #fff;
+    border: 1px solid #f59e0b; border-radius: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    opacity: 0; transform: translateY(-12px);
+    transition: opacity 0.3s, transform 0.3s; pointer-events: auto;
+  }
+  .demosafe-confirm-dialog .dsc-header { padding: 12px 16px 8px; font-weight: 600; font-size: 14px; color: #f59e0b; }
+  .demosafe-confirm-dialog .dsc-body { padding: 0 16px 12px; }
+  .demosafe-confirm-dialog .dsc-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .demosafe-confirm-dialog .dsc-label { color: #999; font-size: 12px; }
+  .demosafe-confirm-dialog .dsc-key { font-family: monospace; background: #2a2a4e; padding: 2px 6px; border-radius: 4px; }
+  .demosafe-confirm-dialog .dsc-confidence { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,0.2); color: #f59e0b; }
+  .demosafe-confirm-dialog .dsc-input { width: 100%; padding: 6px 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a4e; color: #fff; font-size: 13px; outline: none; }
+  .demosafe-confirm-dialog .dsc-input:focus { border-color: #f59e0b; }
+  .demosafe-confirm-dialog .dsc-source { color: #888; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+  .demosafe-confirm-dialog .dsc-actions { display: flex; gap: 8px; padding: 0 16px 12px; justify-content: flex-end; }
+  .demosafe-confirm-dialog .dsc-btn { padding: 6px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .demosafe-confirm-dialog .dsc-btn-confirm { background: #22c55e; color: #fff; }
+  .demosafe-confirm-dialog .dsc-btn-confirm:hover { background: #16a34a; }
+  .demosafe-confirm-dialog .dsc-btn-reject { background: #374151; color: #d1d5db; }
+  .demosafe-confirm-dialog .dsc-btn-reject:hover { background: #4b5563; }
 `;
 document.head.appendChild(style);
 
@@ -122,11 +151,16 @@ chrome.runtime.onMessage.addListener((message) => {
             // Persist for pre-hide.ts on next page load
             chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
             if (isDemoMode) {
-                enablePreHide(); // Re-enable manifest CSS protection
-                scanAndMask();
+                if (isOnSupportedPlatform() || isUniversalMasking) {
+                    enablePreHide();
+                    scanAndMask();
+                }
                 if (isOnSupportedPlatform()) {
                     startPlatformWatcher();
                     startClipboardInterceptor();
+                    startInputPolling();
+                    scanForNewKeys();
+                } else if (shouldAutoCapture()) {
                     startInputPolling();
                     scanForNewKeys();
                 }
@@ -161,6 +195,10 @@ chrome.runtime.onMessage.addListener((message) => {
 
         case 'capture_mode_changed':
             handleCaptureModeChanged(message.payload?.isActive ?? false, message.payload?.timeout ?? CAPTURE_TIMEOUT_DEFAULT);
+            break;
+
+        case 'key_confirmed':
+            showToast(message.payload?.serviceName ?? 'Unknown', 'key stored');
             break;
     }
 });
@@ -356,9 +394,12 @@ function isOnSupportedPlatform(): boolean {
     return false;
 }
 
-/** Auto-capture should run when Demo Mode is ON and on a supported platform */
+/** Auto-capture should run when Demo Mode is ON and on a supported platform, or universal detection is enabled */
 function shouldAutoCapture(): boolean {
-    return (isDemoMode && isOnSupportedPlatform()) || isCaptureMode;
+    if (isCaptureMode) return true;
+    if (isDemoMode && isOnSupportedPlatform()) return true;
+    if (isDemoMode && isUniversalDetection) return true;
+    return false;
 }
 
 // MARK: - Active Capture: Mode Management
@@ -730,35 +771,146 @@ function restoreClipboardWriteText() {
 
 // MARK: - Active Capture: Submission
 
+function generateMaskedPreview(rawValue: string): string {
+    return rawValue.length > 12 ? rawValue.slice(0, 8) + '****...' : '****...****';
+}
+
+function isAlreadyStoredKey(value: string): boolean {
+    for (const [, regex] of compiledPatterns) {
+        regex.lastIndex = 0;
+        if (regex.test(value)) return true;
+    }
+    return false;
+}
+
 function submitCapturedKey(match: CaptureMatch) {
     const trimmedValue = match.rawValue.trim();
-    // Dedup: skip if already submitted in this capture session
     if (submittedKeys.has(trimmedValue)) return;
+    if (rejectedKeys.has(trimmedValue)) return;
+    if (isAlreadyStoredKey(trimmedValue)) return;
     submittedKeys.add(trimmedValue);
     match.rawValue = trimmedValue;
 
-    // Mask preview: show prefix + ****
-    const preview = match.rawValue.length > 12
-        ? match.rawValue.slice(0, 8) + '****...'
-        : '****...****';
+    const preview = generateMaskedPreview(trimmedValue);
 
-    chrome.runtime.sendMessage({
-        type: 'submit_captured_key',
-        payload: {
-            rawValue: match.rawValue,
-            suggestedService: match.serviceName,
-            sourceURL: window.location.href,
-            confidence: match.confidence,
-            captureMethod: match.captureMethod,
-        },
-    }).catch(() => {});
+    if (match.confidence >= CONFIDENCE_HIGH) {
+        // High confidence — submit + mask + toast (original behavior)
+        chrome.runtime.sendMessage({
+            type: 'submit_captured_key',
+            payload: {
+                rawValue: match.rawValue,
+                suggestedService: match.serviceName,
+                sourceURL: window.location.href,
+                confidence: match.confidence,
+                captureMethod: match.captureMethod,
+            },
+        }).catch(() => {});
+        if (isDemoMode) {
+            immediatelyMaskValue(trimmedValue, match.serviceName, preview);
+        }
+        showToast(match.serviceName, preview);
 
-    // Immediately mask in DOM without waiting for Core round-trip
-    if (isDemoMode) {
-        immediatelyMaskValue(trimmedValue, match.serviceName, preview);
+    } else if (match.confidence >= CONFIDENCE_MIN) {
+        // Medium confidence — mask first (prevent leak), then show confirmation
+        if (isDemoMode) {
+            immediatelyMaskValue(trimmedValue, match.serviceName, preview);
+        }
+        showConfirmationDialog(match, preview);
     }
+    // Below CONFIDENCE_MIN — silently ignore
+}
 
-    showToast(match.serviceName, preview);
+// MARK: - Active Capture: Confirmation Dialog
+
+const pendingConfirmations: { match: CaptureMatch; preview: string }[] = [];
+let confirmDialogActive = false;
+
+function showConfirmationDialog(match: CaptureMatch, preview: string) {
+    if (confirmDialogActive) {
+        pendingConfirmations.push({ match, preview });
+        return;
+    }
+    confirmDialogActive = true;
+    document.querySelector('.demosafe-confirm-dialog')?.remove();
+
+    const dialog = document.createElement('div');
+    dialog.className = 'demosafe-confirm-dialog';
+    dialog.innerHTML = `
+        <div class="dsc-header">⚠ Possible API Key Detected</div>
+        <div class="dsc-body">
+            <div class="dsc-row"><span class="dsc-label">Key</span><span class="dsc-key">${preview}</span></div>
+            <div class="dsc-row"><span class="dsc-label">Confidence</span><span class="dsc-confidence">${Math.round(match.confidence * 100)}%</span></div>
+            <div class="dsc-row"><span class="dsc-label">Service</span><span style="flex:1;margin-left:8px"><input class="dsc-input" type="text" value="${match.serviceName}" /></span></div>
+            <div class="dsc-row"><span class="dsc-label">Source</span><span class="dsc-source">${window.location.hostname}</span></div>
+        </div>
+        <div class="dsc-actions">
+            <button class="dsc-btn dsc-btn-reject">Reject</button>
+            <button class="dsc-btn dsc-btn-confirm">Confirm</button>
+        </div>`;
+
+    const serviceInput = dialog.querySelector<HTMLInputElement>('.dsc-input')!;
+
+    const closeDialog = (reject: boolean) => {
+        dialog.style.opacity = '0';
+        dialog.style.transform = 'translateY(-12px)';
+        document.removeEventListener('keydown', escHandler);
+        if (reject) {
+            rejectedKeys.add(match.rawValue);
+            removeMaskForValue(match.rawValue);
+        }
+        setTimeout(() => {
+            dialog.remove();
+            confirmDialogActive = false;
+            const next = pendingConfirmations.shift();
+            if (next) showConfirmationDialog(next.match, next.preview);
+        }, 300);
+    };
+
+    dialog.querySelector('.dsc-btn-confirm')!.addEventListener('click', () => {
+        chrome.runtime.sendMessage({
+            type: 'confirm_captured_key',
+            payload: {
+                rawValue: match.rawValue,
+                suggestedService: serviceInput.value.trim() || match.serviceName,
+                sourceURL: window.location.href,
+                captureMethod: match.captureMethod,
+            },
+        }).catch(() => {});
+        closeDialog(false);
+    });
+
+    dialog.querySelector('.dsc-btn-reject')!.addEventListener('click', () => closeDialog(true));
+
+    const escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeDialog(true); };
+    document.addEventListener('keydown', escHandler);
+    setTimeout(() => { if (dialog.parentNode) closeDialog(true); }, 30000);
+
+    document.body.appendChild(dialog);
+    requestAnimationFrame(() => { dialog.style.opacity = '1'; dialog.style.transform = 'translateY(0)'; });
+}
+
+// MARK: - Active Capture: Remove Mask for Rejected Key
+
+function removeMaskForValue(rawValue: string) {
+    const toRemove: MaskRecord[] = [];
+    const remaining: MaskRecord[] = [];
+    for (const record of maskRecords) {
+        if (record.originalText === rawValue) toRemove.push(record);
+        else remaining.push(record);
+    }
+    for (const record of toRemove) {
+        const parent = record.element.parentNode;
+        if (!parent) continue;
+        parent.replaceChild(document.createTextNode(record.originalText), record.element);
+        parent.normalize();
+    }
+    maskRecords = remaining;
+    document.querySelectorAll<HTMLInputElement>('input[data-demosafe-original], textarea[data-demosafe-original]').forEach(el => {
+        if (el.getAttribute('data-demosafe-original') === rawValue) {
+            el.value = rawValue;
+            el.removeAttribute('data-demosafe-original');
+        }
+    });
 }
 
 /**
@@ -991,13 +1143,20 @@ startObserver();
 chrome.runtime.sendMessage({ type: 'get_state' }, (response) => {
     if (response) {
         isDemoMode = response.isDemoMode ?? false;
+        isUniversalMasking = response.isUniversalMasking ?? false;
+        isUniversalDetection = response.isUniversalDetection ?? false;
         chrome.storage.local.set({ demosafeDemoMode: isDemoMode });
         if (isDemoMode) {
-            enablePreHide();
-            scanAndMask();
+            if (isOnSupportedPlatform() || isUniversalMasking) {
+                enablePreHide();
+                scanAndMask();
+            }
             if (isOnSupportedPlatform()) {
                 startPlatformWatcher();
                 startClipboardInterceptor();
+                startInputPolling();
+                scanForNewKeys();
+            } else if (shouldAutoCapture()) {
                 startInputPolling();
                 scanForNewKeys();
             }
