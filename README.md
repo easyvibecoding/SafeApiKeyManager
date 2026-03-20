@@ -160,13 +160,13 @@ See the [docs/](docs/) directory for detailed specifications:
 - [x] VS Code Extension (Editor Decoration masking)
 - [x] Chrome Extension (DOM masking, WebSocket IPC)
 - [x] Floating Toolbox HUD (hold-to-search + Scheme B lock)
-- [x] Keyboard shortcut paste (Ctrl+Option+[1-9])
+- [x] Keyboard shortcut paste (Ctrl+Option+Cmd+[1-9])
 - [x] Active Key Capture (auto-detect keys from web pages)
 - [x] Platform-specific capture strategies (8 platforms tested, SSoT architecture)
 - [x] Per-platform CSS isolation + clipboard writeText interception
 - [x] Native Messaging Host dual-path IPC (WS primary + NMH fallback)
 - [x] Smart Key Extraction confirmation dialog (full Chrome ↔ Swift Core IPC: detect → submit → Keychain store → pattern sync)
-- [ ] Linked Key Groups (sequential paste)
+- [x] Linked Key Groups (sequential paste with ⌘V→Tab automation, Settings UI CRUD, pre-fetch Keychain)
 - [ ] API Key rotation & deployment sync
 - [ ] Terminal masking (node-pty proxy)
 - [ ] System-wide masking (Accessibility API)
